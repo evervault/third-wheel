@@ -11,6 +11,7 @@ use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
 use tower::Layer;
+use lazy_static::lazy_static;
 
 use http::{Request, Response};
 
@@ -26,11 +27,15 @@ use crate::{
     proxy::mitm::ThirdWheel,
 };
 use hyper::service::{make_service_fn, service_fn};
-use hyper::{server::Server, Body};
+use hyper::{server::Server, Body, header};
 
 use self::mitm::RequestSendingSynchronizer;
 
 pub(crate) mod mitm;
+
+lazy_static!(
+    static ref ELB_HEADER_VALUE: header::HeaderValue = header::HeaderValue::from_bytes(b"ELB-HealthChecker/2.0").expect("Infallible: Hardcoded header");
+);
 
 // TODO: do this without macro hackery
 // The idea of using of a macro here is borrowed from warp after hitting my head against it for some time.
@@ -107,6 +112,8 @@ macro_rules! make_service {
                                 *res.status_mut() = http::status::StatusCode::BAD_REQUEST;
                             }
                         }
+                    } else if Some(&*ELB_HEADER_VALUE) == req.headers().get(header::USER_AGENT) {
+                        *res.status_mut() = http::status::StatusCode::OK;
                     } else {
                         *res.status_mut() = http::status::StatusCode::BAD_REQUEST;
                     }

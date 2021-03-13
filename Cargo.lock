@@ -1429,6 +1429,7 @@ dependencies = [
  "http",
  "httparse",
  "hyper",
+ "lazy_static",
  "log",
  "native-tls",
  "openssl",
