@@ -1,6 +1,6 @@
 use futures::Future;
 use futures::FutureExt;
-use hyper::server::conn::Http;
+use hyper::server::conn::{Http,AddrStream};
 use hyper::{client::conn::Builder, service::Service};
 use native_tls::Certificate;
 use openssl::x509::X509;
@@ -48,7 +48,7 @@ macro_rules! make_service {
         let mitm = $this.mitm_layer;
         let additional_host_mapping = $this.additional_host_mappings;
         let additional_root_certificates = $this.additional_root_certificates;
-        make_service_fn(move |_| {
+        make_service_fn(move |conn: &AddrStream| {
             // While the state was moved into the make_service closure,
             // we need to clone it here because this closure is called
             // once for every connection.
@@ -59,6 +59,7 @@ macro_rules! make_service {
             let mitm = mitm.clone();
             let additional_host_mapping = additional_host_mapping.clone();
             let additional_root_certificates = additional_root_certificates.clone();
+            let client_addr = conn.remote_addr();
 
             async move {
                 Ok::<_, Error>(service_fn(move |mut req: Request<Body>| {
@@ -92,6 +93,7 @@ macro_rules! make_service {
                                                 mitm,
                                                 additional_host_mapping.clone(),
                                                 additional_root_certificates.clone(),
+                                                client_addr
                                             )
                                             .await
                                             {
@@ -251,6 +253,7 @@ async fn run_mitm_on_connection<S, T, U>(
     mitm_maker: T,
     additional_host_mapping: HashMap<String, String>,
     additional_root_certificates: Vec<Certificate>,
+    client_addr: SocketAddr
 ) -> Result<(), Error>
 where
     T: Layer<ThirdWheel, Service = U> + std::marker::Sync + std::marker::Send + 'static + Clone,
@@ -285,7 +288,7 @@ where
             .run()
             .await
     });
-    let third_wheel = ThirdWheel::new(sender);
+    let third_wheel = ThirdWheel::new(sender, client_addr);
     let mitm_layer = mitm_maker.layer(third_wheel);
 
     Http::new()
