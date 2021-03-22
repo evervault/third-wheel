@@ -41,6 +41,14 @@ impl CertificateAuthority {
         Ok(Self { cert, key })
     }
 
+    /// Load certificate authority from PEM formatted bytes.
+    pub fn load_from_pem_bytes(cert_bytes: &Vec<u8>, key_bytes: &Vec<u8>) -> Result<Self, Error> {
+        let cert = X509::from_pem(cert_bytes)?;
+        let key = PKey::from_rsa(Rsa::private_key_from_pem(key_bytes)?)?;
+
+        Ok(Self { cert, key })
+    }
+
     /// Load certificate authority from PEM formatted files where the key file
     /// is encrypted with a passphrase
     pub fn load_from_pem_files_with_passphrase_on_key<P: AsRef<Path>, Q: AsRef<Path>>(
