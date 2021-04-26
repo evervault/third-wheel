@@ -67,7 +67,8 @@ pub struct ThirdWheel {
         oneshot::Sender<Result<Response<Body>, Error>>,
         Request<Body>,
     )>,
-    pub client_addr: std::net::SocketAddr
+    pub client_addr: std::net::SocketAddr,
+    pub auth: Option<String>,
 }
 
 impl ThirdWheel {
@@ -76,11 +77,13 @@ impl ThirdWheel {
             oneshot::Sender<Result<Response<Body>, Error>>,
             Request<Body>,
         )>,
-        client_addr: std::net::SocketAddr
+        client_addr: std::net::SocketAddr,
+        auth: Option<String>,
     ) -> Self {
         Self {
             sender,
-            client_addr
+            client_addr,
+            auth,
         }
     }
 }
