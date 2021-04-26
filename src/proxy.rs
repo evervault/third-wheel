@@ -66,14 +66,10 @@ macro_rules! make_service {
                 Ok::<_, Error>(service_fn(move |mut req: Request<Body>| {
                     log::info!("Received request to connect: {}", req.uri());
                     let auth = match req.headers().get(header::PROXY_AUTHORIZATION) {
-                        Some(header) => {
-                            let header_str = header.clone();
-                            let header_val = match header.to_str() {
-                                Ok(s) => s.to_string(),
-                                Err(_) => "".to_string(),
-                            };
-                            Some(header_val)
-                        }
+                        Some(header) => header
+                            .to_str()
+                            .ok()
+                            .map(|header_str| header_str.to_string()),
                         None => None,
                     };
 
