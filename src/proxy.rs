@@ -1,7 +1,8 @@
 use futures::Future;
 use futures::FutureExt;
-use hyper::server::conn::{Http,AddrStream};
+use hyper::server::conn::{AddrStream, Http};
 use hyper::{client::conn::Builder, service::Service};
+use lazy_static::lazy_static;
 use native_tls::Certificate;
 use openssl::x509::X509;
 use std::collections::HashMap;
@@ -11,7 +12,6 @@ use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
 use tower::Layer;
-use lazy_static::lazy_static;
 
 use http::{Request, Response};
 
@@ -27,15 +27,17 @@ use crate::{
     proxy::mitm::ThirdWheel,
 };
 use hyper::service::{make_service_fn, service_fn};
-use hyper::{server::Server, Body, header};
+use hyper::{header, server::Server, Body};
 
 use self::mitm::RequestSendingSynchronizer;
 
 pub(crate) mod mitm;
 
-lazy_static!(
-    static ref ELB_HEADER_VALUE: header::HeaderValue = header::HeaderValue::from_bytes(b"ELB-HealthChecker/2.0").expect("Infallible: Hardcoded header");
-);
+lazy_static! {
+    static ref ELB_HEADER_VALUE: header::HeaderValue =
+        header::HeaderValue::from_bytes(b"ELB-HealthChecker/2.0")
+            .expect("Infallible: Hardcoded header");
+}
 
 // TODO: do this without macro hackery
 // The idea of using of a macro here is borrowed from warp after hitting my head against it for some time.
@@ -60,10 +62,17 @@ macro_rules! make_service {
             let additional_host_mapping = additional_host_mapping.clone();
             let additional_root_certificates = additional_root_certificates.clone();
             let client_addr = conn.remote_addr();
-
             async move {
                 Ok::<_, Error>(service_fn(move |mut req: Request<Body>| {
                     log::info!("Received request to connect: {}", req.uri());
+                    let auth = match req.headers().get(header::PROXY_AUTHORIZATION) {
+                        Some(header) => header
+                            .to_str()
+                            .ok()
+                            .map(|header_str| header_str.to_string()),
+                        None => None,
+                    };
+
                     let mut res = Response::new(Body::empty());
 
                     // The proxy can only handle CONNECT requests
@@ -93,7 +102,8 @@ macro_rules! make_service {
                                                 mitm,
                                                 additional_host_mapping.clone(),
                                                 additional_root_certificates.clone(),
-                                                client_addr
+                                                client_addr,
+                                                auth,
                                             )
                                             .await
                                             {
@@ -284,7 +294,8 @@ async fn run_mitm_on_connection<S, T, U>(
     mitm_maker: T,
     additional_host_mapping: HashMap<String, String>,
     additional_root_certificates: Vec<Certificate>,
-    client_addr: SocketAddr
+    client_addr: SocketAddr,
+    auth: Option<String>,
 ) -> Result<(), Error>
 where
     T: Layer<ThirdWheel, Service = U> + std::marker::Sync + std::marker::Send + 'static + Clone,
@@ -319,7 +330,7 @@ where
             .run()
             .await
     });
-    let third_wheel = ThirdWheel::new(sender, client_addr);
+    let third_wheel = ThirdWheel::new(sender, client_addr, auth);
     let mitm_layer = mitm_maker.layer(third_wheel);
 
     Http::new()
